@@ -1,10 +1,13 @@
 import yargs from 'yargs'
 import fs from 'node:fs'
+import { type } from 'node:os'
+import { error } from 'node:console'
 
 let argv = yargs(process.argv.slice(2))
     .help(false)
     .parse()
-if(argv.status) argv.status = argv.status.toLowerCase()
+
+let command = argv._[0]
 
 let tasks = []
 try {
@@ -12,94 +15,110 @@ try {
 } catch {
     writeFile()
 }
-if(argv._[0])
-    switch(argv._[0].toLowerCase()){
+if(typeof(command) !== 'string')
+    console.error('Command should be type of string')
+else
+    switch(command.toLowerCase()){
         case 'add': addTask(); break;
         case 'remove': removeTask(); break;
-        case 'list': getAllTasks(); break;
+        case 'list': diplayTasks(); break;
         case 'update': update(); break;
+        case 'mark': mark(); break;
         case 'help': showHelp; break;
         default: 
-            console.error('Wrong Command')
-            showHelp()
+            console.error(`Command doesn't exist`)
     }
-else showHelp()
 function writeFile() {
     fs.writeFileSync('tasks.json', JSON.stringify(tasks))
 }
 function addTask() {
     let newId = tasks.length + 1
+    let inputTask = argv._[1]
     if(tasks.some(item => item.id === newId))
         newId += 1
-    if(argv.task)
+    if(inputTask)
         tasks.push({
             id: newId,
-            task: argv.task,
+            task: inputTask,
             status: 'none'
         })
-    else console.error("Task should not be empty")
+    else
+        console.error("Task should not be empty")
     writeFile()
 }
 function removeTask() {
-    if(argv.id)
-        if(tasks.some(item => item.id == argv.id))
-            tasks = tasks.filter(item => item.id !== argv.id)
-        else console.error('Wrong ID')
-    else 
+    let removeTaskId = argv._[1]
+    if(typeof(removeTaskId) === 'string' && removeTaskId.toLowerCase() === 'all')
         tasks = []
+    else 
+        if(tasks.some(item => item.id == removeTaskId))
+            tasks = tasks.filter(item => item.id != removeTaskId)
+        else 
+            console.error(`You should include ID of task or 'all' for removing all`)
     writeFile()
 }
-function getAllTasks() {
-    if(argv.status)
-        if(['done','none', 'in progress'].includes(argv.status))
-            tasks
-                .filter(item => item.status === argv.status)
-                .forEach(item => console.table(item))
-        else
-            console.error('Status should be: done/in progress/none')
-    else
+function diplayTasks() {
+    let filter = argv._[1]
+    if(typeof(filter) === 'string' && filter.toLowerCase() === 'all')
         if(tasks.length)
             tasks.forEach(item => console.table(item))
         else
             console.error('No task been added')
+    else
+        if(isStatusValid(filter))
+            if(tasks.some(item => item.status === filter))
+                tasks
+                    .filter(item => item.status === filter)
+                    .forEach(item => console.table(item))
+            else
+                console.error(`No task is ${filter}`)
+        else
+            console.error(`You should include status [done/in-progress/none] or 'all' for listing all`)
 }
 function update() {
-    if(!argv.id)
-        throw new Error("You didn't set ID")
-    if(!tasks.some(item => item.id == argv.id))
-        throw new Error('Invalid ID')
-    if (argv.task) {
-        tasks.find(item => item.id === argv.id).task = argv.task
+    let taskId = argv._[1]
+    let editedTask = argv._[2]
+    let idError = handleTaskIdErr(taskId)
+    if(!idError && editedTask){
+        tasks.find(item => item.id === taskId).task = editedTask
         writeFile()
     }
-    if (argv.status)
-        if(['done','none', 'in progress'].includes(argv.status)) {
-            tasks.find(item => item.id === argv.id).status = argv.status
+}
+function mark() {
+    let editedStatus = argv._[1]
+    let taskId = argv._[2]
+    let idError = handleTaskIdErr(taskId)
+    if(!idError) {
+        if(isStatusValid(editedStatus)) {
+            tasks.find(item => item.id === taskId).status = editedStatus
             writeFile()
         }
         else
-            console.error('Wrong status input')
+            console.error('Status should be done/in-progress/none')
+    }
+    else if(!isStatusValid(editedStatus))
+        console.error('Status should be done/in-progress/none')
 }
-function showHelp() {
-    console.log(`
-Usage:
-  node app.js <command> [options]
-
-Commands:
-  add       --task="<task name>"      Add a new task
-  remove    [--id=<number>]           Remove a task by ID (no ID removes all)
-  list      [--status=<status>]       List tasks (status: done, none, in progress)
-  update    --id=<number> [options]   Update a task's text or status
-  <Empty>   prints this text
-
-Options:
-  --task     Task description
-  --status   Task status (done, none, in progress)
-  --id       Task ID  
-
-Examples:
-  node app.js add --task="Buy milk"
-  node app.js list --status=done
-  node app.js update --id=1 --status=done
-`);
+function handleTaskIdErr(taskId) {
+    try {
+        if(!taskId)
+            throw `emptyId`
+        if(typeof(taskId) != 'number')
+            throw `notNumber`
+        if(!tasks.some(item => item.id == taskId))
+            throw `foundNoTask`
+        return false
+    }
+    catch(error) {
+        if(error === `emptyId`)
+            console.error(`You should include an ID`)
+        if(error === `notNumber`)
+            console.error(`The ID should be a number`)
+        if(error === `foundNoTask`)
+            console.error(`No such task with this ID`)
+        return true
+    }
+}
+function isStatusValid(status) {
+    return ['done','none', 'in-progress'].includes(status)
 }
